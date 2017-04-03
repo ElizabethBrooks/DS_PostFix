@@ -1,0 +1,653 @@
+% Author: Elizabeth Brooks
+% File: CSCI 512 Assignment 3
+% Date Modified: 13 March 2017
+
+\documentclass[12pt]{report}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2mm}
+\setlength{\topsep}{0pt}
+
+\usepackage{geometry}
+ \geometry{
+ letterpaper, left=20mm, right=20mm,  top=20mm,
+ }
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{stmaryrd}
+\usepackage{mathrsfs}
+\usepackage{framed}
+\usepackage{mathtools}
+\usepackage{amssymb}
+
+\begin{document}
+
+\begin{center}
+\begin{Large} {\bf CSCI 512 Design and Implementation of Computer Programming Languages } \end{Large}
+
+\begin{Large} {\bf Winter, 2017 } \end{Large}
+\end{center}
+
+\begin{large}
+{\bf Denotational Semantics for PostFix}
+\end{large}
+
+{\bf Semantic Domains}
+\begin{tabbing}
+$t\in\:$\= {\em StackTransform = Stack $\rightarrow$ Stack}\\
+$s\in\:$\> {\em Stack = Value$^*$ + Error}\\
+$d\in\:$\> {\em Dictionary = Ident $\rightarrow$} ({\em Value + \{{unbound}\}})\\
+$v\in\:$\> {\em Value = Ident + Int + StackTransform} \\
+$r\in\:$\> {\em Result = Value + Error}\\
+$a\in\:$\> {\em Answer = Int + Error}\\
+\>{\em Error = \{{\tt error}\}}\\
+$n\in\:$\> $Ident = \{"","a","b",\ldots,"ab",\ldots\}$ \\
+$i\in\:$\> $Int = \{\ldots,-2,-1,0,1,2,\ldots\}$ \\
+$b\in\:$\> $Bool=\{true,false\}$
+\end{tabbing}
+
+{\bf Constants and Functions on PostFix Semantic Domains}
+
+\hangindent=10mm {\em errorResult : Result} \newline
+An error in the domain $Result$. 
+
+\hangindent=10mm {\em errorAnswer : Answer} \newline
+An error in the domain $Answer$. 
+
+\hangindent=10mm {\em errorStack : Stack} \newline
+The distinguished error stack.
+
+\hangindent=10mm {\em unbound : Dictionary} \newline
+A token representing an unbound identifier in the domain $Dictionary$.  
+
+\hangindent=10mm {\em ErrorTransform : StackTransform}\newline
+A transform that maps all stacks to {\em errorStack}.
+
+\hangindent=10mm {\em push : Result $\rightarrow$ StackTransform} \newline
+Given a result value $v$, return a transform that pushes $v$ onto a stack; otherwise return {\em errorTransform}.
+
+\hangindent=10mm {\em pop : StackTransform}\newline
+For a nonempty stack $s$, return the stack resulting from popping the top value; otherwise return {\em errorStack}.
+
+\hangindent=10mm {\em top : Stack $\rightarrow$ Result} \newline
+Given a nonempty stack $s$, return a result that is the top element of $s$; otherwise return {\em errorResult}.
+
+\hangindent=10mm {\em intAt : Int $\rightarrow$ Stack $\rightarrow$ Result} \newline
+Given the integer $i_{index}$ and a stack whose $i_{index}$th element (starting from 1) is the integer $i_{result}$, return $i_{result}$; otherwise return {\em errorResult}. 
+
+\hangindent=10mm {\em arithop : (Int $\rightarrow$ Int $\rightarrow$ Result) $\rightarrow$ StackTransform} \newline
+Let {\em f : Int $\rightarrow$ Int $\rightarrow$ Result} be the functional argument to {\em arithop}.  Return a transform with the following behavior: if the given stack has two integers $i_1$ and $i_2$ followed by $s_{rest}$, then return a stack whose top value $v_{result}$ is followed by by $s_{rest}$, where $(Value \rightarrowtail Result\ v_{result})$ is the result of the application $(f\ i_1\ i_2)$. If the given stack is not of this form or if the result of applying $f$ is {\em errorResult}, then return {\em errorStack}.
+
+\hangindent=10mm {\em transform : Result $\rightarrow$ StackTransform} \newline
+Given a result that is a stack transform, return it; otherwise return {\em errorTransform}.
+
+\hangindent=10mm {\em resToAns : Result $\rightarrow$ Answer} \newline
+Given a result that is an integer, return it as an answer; otherwise return {\em errorAnswer}.
+
+\hangindent=10mm {\em bind : Ident $\rightarrow$ Value $\rightarrow$ Dictionary} \newline
+Given a name, {\em n}, and a value, {\em v}, update the dictionary object, {\em d}, with a mapping between the {\em n} and {\em v} added to any existing bindings; if the name is already bound in the given dictionary, the new binding replaces the previous.
+
+
+\vspace{4mm}
+{\bf Valuation functions for PostFix}
+
+The signatures of the valuation functions provide insight into the meaning of the language elements.
+\begin{tabbing}
+$\mathcal{P}$ \=: Prog$\rightarrow Int^*\rightarrow$ {\em Answer} \\
+$\mathcal{Q}$ \>: CommandSeq$\rightarrow$ {\em StackTransform} \\
+$\mathcal{C}$ \>: Command$\rightarrow$ {\em StackTransform} \\
+$\mathcal{A}$ \>: ArithmeticOperator $\rightarrow$ ({\em Int} $\rightarrow$ {\em Int} $\rightarrow$ {\em Result}) \\
+$\mathcal{R}$ \>: RelationalOperator $\rightarrow$ ({\em Int} $\rightarrow$ {\em Int} $\rightarrow$ {\em Bool}) \\
+$\mathcal{N}$ \>: IntLit $\rightarrow$ {\em Int} \\
+$\mathcal{I}$ \>: Identifier $\rightarrow$ {\em Ident}
+\end{tabbing}
+
+The meaning pf a program $({\tt postfix}\ N_{numargs}\ Q)$ is a function that transforms an initial stack consisting of the integers in the argument sequence via the transform $\mathcal{Q}\llbracket Q\rrbracket$ and returns the top integer of the resulting stack.  
+
+The meaning of a command sequence is the composition of the transforms of its component command. The order of the composition
+$$\mathcal{Q}\llbracket Q\rrbracket\circ\mathcal{C}\llbracket C\rrbracket =\lambda s\:.\:(\mathcal{Q}\llbracket Q\rrbracket\ (\mathcal{C}\llbracket C\rrbracket\ s))$$
+is crucial because it guarantees that the stack manipulations of the first command can be observed by subsequent commands.
+
+
+\begin{tabbing}
+$\mathcal{P}\llbracket$\=$({\tt postfix}\ N_{numargs}\ Q)\rrbracket$ \\
+\> $=\lambda i^*\:.\:$ \= {\bf if} $(length\ i^*)=_{Int}\mathcal{N}\llbracket N_{numargs}\rrbracket$ \\
+\> \> {\bf then} {\em resToAns} $(top\ (\mathcal{Q}\llbracket Q\rrbracket (Value^*\rightarrowtail Stack\ (map\ Int\rightarrowtail Value\ i^*))))$\\
+\> \> {\bf else} {\em errorAnswer} {\bf end}
+\end{tabbing}
+$\mathcal{Q}\llbracket C.Q\rrbracket=\mathcal{Q}\llbracket Q\rrbracket\circ\mathcal{C}\llbracket C\rrbracket$
+
+$\mathcal{Q}\llbracket \rrbracket=\lambda s\:.\:s$
+
+$\mathcal{C}\llbracket N\rrbracket=$ {\em push} $(Value \rightarrowtail Result\ (Int \rightarrowtail Value\ \mathcal{N}\llbracket N\rrbracket))$
+
+$\mathcal{C}\llbracket I\rrbracket=$ {\em push} $(Value \rightarrowtail Result\ (Int \rightarrowtail Value\ \mathcal{I}\llbracket I\rrbracket))$
+
+$\mathcal{C}\llbracket (Q)\rrbracket= push\ (Value \rightarrowtail Result\ (StackTransform \rightarrowtail Value\ \mathcal{Q}\llbracket Q\rrbracket))$
+
+$\mathcal{C}\llbracket {\tt pop}\rrbracket=$ {\em pop}
+
+$\mathcal{C}\llbracket {\tt swap}\rrbracket=\lambda s\:.\:(push\ (top\ (pop\ s))\ (push\ (top\ s)\ (pop\ (pop\ s))))$
+
+$\mathcal{C}\llbracket {\tt pair}\rrbracket=\lambda s\:.\:(push\ \langle (top\ s)\:.\:(top\ (pop\ s)) \rangle \ (pop\ (pop\ s)))$
+
+\begin{tabbing}
+$\mathcal{C}\llbracket {\tt fst}\rrbracket=\lambda s\:.\:$ \={\bf match} {\em top s} \\
+\>$\triangleright (Value^*\rightarrowtail Stack\ (\langle v_1, v_2 \rangle \:.\: v^*_{rest}) \talloblong $\\
+\>$(push\ i_1\ (pop\ s))$ \\
+\>$\triangleright$ {\bf else} {\em errorStack} {\bf end}
+\end{tabbing}
+
+\begin{tabbing}
+$\mathcal{C}\llbracket {\tt snd}\rrbracket=\lambda s\:.\:$ \={\bf  match} {\em top s} \\
+\>$\triangleright (Value^*\rightarrowtail Stack\ (\langle v_1, v_2 \rangle \:.\: v^*_{rest}) \talloblong $\\
+\>$(push\ i_2\ (pop\ s))$ \\
+\>$\triangleright$ {\bf else} {\em errorStack} {\bf end}
+\end{tabbing}
+
+\begin{tabbing}
+$\mathcal{C}\llbracket {\tt for}\rrbracket=\lambda s\:.\:$ \={\bf  match} {\em top s} \\
+\>$\triangleright (Value^*\rightarrowtail Stack\ \langle (Int\rightarrowtail Value\ i), (Value^*\rightarrowtail StackTransform\ t^*) \rangle) \talloblong $ \\
+\>{\bf if} \=$1 \leq_{Int} i$ \\
+\>{\bf then} $(push\ (i\:.\:t^*\:@\:\langle (i-1)\:.\:t^* \rangle)\ (pop\ s)) $ \ {\bf end} \\
+\>$\triangleright (Value^*\rightarrowtail Stack\ \langle (Int\rightarrowtail Value\ i), (Value^*\rightarrowtail StackTransform\ t^*) \rangle) \talloblong $ \\
+\>{\bf if} \=$0 =_{Int} i$ \\
+\>{\bf then} $ (pop\ s) $ \ {\bf end} \\
+\>$\triangleright\ ${\bf else} {\em errorStack} {\bf end}
+\end{tabbing}
+
+\begin{tabbing}
+$\mathcal{C}\llbracket {\tt nget}\rrbracket=\lambda s\:.\:$ \={\bf match} {\em top s} \\
+\>$\triangleright (Value\rightarrowtail Result\ (Int\rightarrowtail Value\ i))\talloblong (push\ (intAt\ i\ (pop\ s))\ (pop\ s)$ \\
+\>$\triangleright$ {\bf else} {\em errorStack} {\bf end}
+\end{tabbing}
+
+\begin{tabbing}
+$\mathcal{C}\llbracket {\tt sel}\rrbracket=\lambda s\:.\:$ \={\bf match} {\em top} $(pop\ (pop\ s))$ \\
+\>$\triangleright\ $\=$(Value\rightarrowtail Result\ (Int\rightarrowtail Value\ i))\talloblong $\\
+\>\>{\em push} \=({\bf if} $i=_{Int}0$ {\bf then} {\em top s} {\bf else} {\em top} ({\em pop s}) {\bf end}) \\
+\>\>\>$(pop\ (pop\ (pop\ s))$\\
+\>$\triangleright$ {\bf else} {\em errorStack} {\bf end}
+\end{tabbing}
+$\mathcal{C}\llbracket {\tt exec}\rrbracket=\lambda s\:.\:(transform\ (top\ s)\ (pop\ s))$
+
+$\mathcal{C}\llbracket A\rrbracket=arithop\ \mathcal{A}\llbracket A\rrbracket$
+
+\begin{tabbing}
+$\mathcal{C}\llbracket R\rrbracket=arithop\ (\lambda i_1i_2\:.\:(Va$\=$lue\rightarrowtail Result$\\
+\>$(Int\rightarrowtail Value\ (${\bf if} $(\mathcal{R}\llbracket R\rrbracket\ i_1\ i_2)$ {\bf then} {\em 1} {\bf else} {\em 0} {\bf end}))))
+\end{tabbing}
+
+\begin{tabbing}
+$\mathcal{C}\llbracket {\tt ref}\rrbracket=\lambda d \:.\: (\lambda s \:.\: $ \={\bf match} {\em top s} \\
+\>$\triangleright $\=$(Value\rightarrowtail Result\ (Ident\rightarrowtail Value\ v_{name}))\talloblong$ \\
+\>\>\={\bf then match} {\em v$_{name}$} \\
+\>\>\>$\triangleright $\=$(Value\rightarrowtail Dictionary\ ((Ident\rightarrowtail Value\ v_{name})\ (Value\rightarrowtail Result\ v_{val})))\talloblong$ \\
+\>\>\>$(push\ v_{val}\ (pop\ s)) $ \\
+\>\>\={\bf else} {\em errorStack} \\
+\>$\triangleright$ {\bf else} {\em errorStack} {\bf end})
+\end{tabbing}
+
+\begin{tabbing}
+$\mathcal{C}\llbracket {\tt def}\rrbracket=\lambda d \:.\: (\lambda s \:.\: $ \={\bf match} {\em s} \\
+\>$\triangleright $\=$(Value^*\rightarrowtail Stack\ ((Int \rightarrowtail Value\ v_1)\:.\:(Ident\rightarrowtail Value\ v_2)\:.\:v^*_{rest}))\talloblong$ \\
+\>{\bf if} $v_2\not\in \{pop, swap, pair, fst, snd, for, nget, sel, exec, $ \\ 
+\>\>$add, sub, mul, div, rem, ref, def\} $ \\
+\>{\bf then} $(bind\ v_2\ v_1) \wedge (pop\ (pop\ s)) $ {\bf end} \\
+\>$\triangleright$ {\bf else} {\em errorStack} {\bf end})
+\end{tabbing}
+
+$\mathcal{A}\llbracket {\tt add}\rrbracket=\lambda i_1i_2\:.\:(Value\rightarrowtail Result\ (Int\rightarrowtail Value\ (i_1+_{Int}i_2)))$
+
+$\mathcal{A}\llbracket {\tt sub}\rrbracket=\lambda i_1i_2\:.\:(Value\rightarrowtail Result\ (Int\rightarrowtail Value\ (i_1-_{Int}i_2)))$
+
+$\mathcal{A}\llbracket {\tt mul}\rrbracket=\lambda i_1i_2\:.\:(Value\rightarrowtail Result\ (Int\rightarrowtail Value\ (i_1\times_{Int}i_2)))$
+
+\begin{tabbing}
+$\mathcal{A}\llbracket {\tt div}\rrbracket=\lambda i_1i_2\:.\:$\={\bf if} $i_2=_{Int}0$\\
+\>{\bf then} {\em errorResult} \\
+\>$(Value\rightarrowtail Result\ (Int\rightarrowtail Value\ (i_1\div_{Int}i_2)))$ {\bf end}
+\end{tabbing}
+
+\begin{tabbing}
+$\mathcal{A}\llbracket {\tt rem}\rrbracket=\lambda i_1i_2\:.\:$\={\bf if} $i_2=_{Int}0$\\
+\>{\bf then} {\em errorResult} \\
+\>$(Value\rightarrowtail Result\ (Int\rightarrowtail Value\ (i_1\:\%_{Int}\:i_2)))$ {\bf end}
+\end{tabbing}
+
+$\mathcal{R}\llbracket {\tt lt}\rrbracket=<_{Int}$
+
+$\mathcal{R}\llbracket {\tt eq}\rrbracket==_{Int}$
+
+$\mathcal{R}\llbracket {\tt gt}\rrbracket=>_{Int}$
+
+$\mathcal{N}$ maps integer literals to the integer numbers that they denote.
+
+$\mathcal{I}$ maps name literals, except for PostFix command names (reserved words), to the alphabetic strings that they denote.
+
+
+{\bf Semantic functions for PostFix}
+
+{\em errorResult : Result = $(Error\rightarrowtail Result\ {\tt error})$} \newline
+{\em errorAnswer : Answer = $(Error\rightarrowtail Answer\ {\tt error})$} \newline
+{\em errorStack : Stack = $(Error\rightarrowtail Stack\ {\tt error})$} \newline
+{\em errorTransform : StackTransform = $\lambda s\:.\:$errorStack} 
+\begin{tabbing}
+{\em push : Result$\rightarrow$ StackTransform} \\
+$=\lambda r\:.\:(\lambda s\:.\:$\={\bf match} $\langle r,s\rangle$\\
+\>$\triangleright\ \langle(Value\rightarrowtail Result\ v),(Value^*\rightarrowtail Stack\ v^*)\rangle\talloblong(v\:.\:v^*)$\\
+\>$\triangleright\ ${\bf else} {\em errorStack} {\bf end})
+\end{tabbing}
+
+\begin{tabbing}
+{\em pop : StackTransform} \\
+$=\lambda s\:.\:$\={\bf match} {\em s}\\
+\>$\triangleright\ (Value^*\rightarrowtail Stack\ (v_{head}\:.\:v^*_{tail}))\talloblong(Value^*\rightarrowtail Stack\ v^*_{tail})$\\
+\>$\triangleright\ ${\bf else} {\em errorStack} {\bf end}
+\end{tabbing}
+
+\begin{tabbing}
+{\em top : Stack$\rightarrow$Result} \\
+$=\lambda s\:.\:$\={\bf match} {\em s}\\
+\>$\triangleright\ (Value^*\rightarrowtail Stack\ (v_{head}\:.\:v^*_{tail}))\talloblong(Value\rightarrowtail Result\ v_{head})$\\
+\>$\triangleright\ ${\bf else} {\em errorResult} {\bf end}
+\end{tabbing}
+
+\begin{tabbing}
+{\em intAt : Int$\rightarrow$Stack$\rightarrow$Result}\\
+$=\lambda is\:.\:$\={\bf match} {\em s}\\
+\>$\triangleright\ $\=$(Value^*\rightarrowtail Stack\ v^*)\talloblong$ \\
+\>\>{\bf if} \=$1\leq_{Int}i$ {\bf and} $i\leq_{Int}(length\ v^*)$ \\
+\>\>\>{\bf then} \={\bf match} $(nth\ i\ v*)$\\
+\>\>\>\>$\triangleright\ (Int\rightarrowtail Value\ i_{result})\talloblong(Value\rightarrowtail Result\ (Int\rightarrowtail Value\ i_{result}))$ \\
+\>\>\>\>$\triangleright\ ${\bf else} {\em errorResult}\\
+\>\>\>{\bf else} {\em errorResult} {\bf end} \\
+\>\>$\triangleright\ ${\bf else} {\em ErrorResult} {\bf end}
+\end{tabbing}
+
+\begin{tabbing}
+{\em arithop : $(Int\rightarrow$ Int$\rightarrow$ Result$)\rightarrow$ StackTransform}\\
+$=\lambda f\:.\:(\lambda s\:.\:$\={\bf match} {\em s} \\
+\>$\triangleright $\=$(Value^*\rightarrowtail Stack\ ((Int\rightarrowtail Value\ i_1)\:.\:(Int\rightarrowtail Value\ i_2)\:.\:v^*_{rest}))\talloblong$ \\
+\>\>$(push\ (f\ i_2\ i_1)\ v^*_{rest})$\\
+\>$\triangleright\ ${\bf else} {\em errorStack} {\bf end})
+\end{tabbing}
+
+\begin{tabbing}
+{\em transform : Result$\rightarrow$StackTransform}\\
+$=\lambda r\:.\:$\={\bf match} {\em r} \\
+\>$\triangleright\ (Value\rightarrowtail Result\ (${\em StackTransform}$\rightarrowtail Value\ t))\talloblong t$\\
+\>$\triangleright\ ${\bf else} {\em errorTransform} {\bf end}
+\end{tabbing}
+
+\begin{tabbing}
+{\em resToAns : Result$\rightarrow$Answer}\\
+$=\lambda r\:.\:$\={\bf match} {\em r} \\
+\>$\triangleright\ (Value\rightarrowtail Result\ (Int\rightarrowtail Value\ i))\talloblong(Int\rightarrowtail Answer\ i)$\\
+\>$\triangleright\ ${\bf else} {\em ErrorAnswer} {\bf end}
+\end{tabbing}
+
+{\em bind : Ident $\rightarrow$ Value $\rightarrow$ Dictionary} \\
+$=\lambda I_{bind}VD\:.\:\lambda I_{ref}\:.\:$\={\bf if} {\em I$_{bind}$ = I$_{ref}$} {\bf then} {\em V} {\bf else} ({\em D I$_{ref}$}) {\bf end} \\
+
+
+{\bf Solutions} \newline
+By applying the developed denotational semantics to the following PostFix programs, their meaning can be determined. The meaning of each program is an element of a function domain that maps the PostFix context domains to an answer that is either in the domain of integers or an error token.
+
+{\bf Question 2.a.i} \newline
+(IF $\langle$(postfix 0 0 (for 11 (pop 2 add))), []$\rangle$) \newline
+= $\langle$0 (for 11 (pop 2 add)), []$\rangle$ \newline
+$\Rightarrow$ $\langle$(for 11 (pop 2 add)), [0]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$11 pop 2 add (for 10 (pop 2 add)), [0]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 10 (pop 2 add)), [11, 0]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 10 (pop 2 add)), [0]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 10 (pop 2 add)), [2, 0]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 10 (pop 2 add)), [2]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$10 pop 2 add (for 9 (pop 2 add)), [2]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 9 (pop 2 add)), [10, 2]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 9 (pop 2 add)), [2]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 9 (pop 2 add)), [2, 2]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 9 (pop 2 add)), [4]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$9 pop 2 add (for 8 (pop 2 add)), [4]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 8 (pop 2 add)), [9, 4]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 8 (pop 2 add)), [4]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 8 (pop 2 add)), [2, 4]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 8 (pop 2 add)), [6]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$8 pop 2 add (for 7 (pop 2 add)), [6]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 7 (pop 2 add)), [8, 6]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 7 (pop 2 add)), [6]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 7 (pop 2 add)), [2, 6]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 7 (pop 2 add)), [8]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$7 pop 2 add (for 6 (pop 2 add)), [8]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 6 (pop 2 add)), [7, 8]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 6 (pop 2 add)), [8]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 6 (pop 2 add)), [2, 8]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 6 (pop 2 add)), [10]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$6 pop 2 add (for 5 (pop 2 add)), [10]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 5 (pop 2 add)), [6, 10]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 5 (pop 2 add)), [10]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 5 (pop 2 add)), [2, 10]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 5 (pop 2 add)), [12]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$5 pop 2 add (for 4 (pop 2 add)), [12]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 4 (pop 2 add)), [5, 12]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 4 (pop 2 add)), [12]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 4 (pop 2 add)), [2, 12]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 4 (pop 2 add)), [14]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$4 pop 2 add (for 3 (pop 2 add)), [14]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 3 (pop 2 add)), [4, 14]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 3 (pop 2 add)), [14]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 3 (pop 2 add)), [2, 14]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 3 (pop 2 add)), [16]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$3 pop 2 add (for 2 (pop 2 add)), [16]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 2 (pop 2 add)), [3, 16]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 2 (pop 2 add)), [16]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 2 (pop 2 add)), [2, 16]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 2 (pop 2 add)), [18]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$2 pop 2 add (for 1 (pop 2 add)), [18]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 1 (pop 2 add)), [2, 18]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 1 (pop 2 add)), [18]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 1 (pop 2 add)), [2, 18]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 1 (pop 2 add)), [20]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$1 pop 2 add (for 0 (pop 2 add)), [20]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 2 add (for 0 (pop 2 add)), [1, 20]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$2 add (for 0 (pop 2 add)), [20]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 0 (pop 2 add)), [2, 20]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 0 (pop 2 add)), [22]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$(), [22]$\rangle$ $\in$ FC \hfill [for] \newline
+$\Rightarrow$ (OF $\langle$(), [22]$\rangle$) = 22
+
+{\bf Question 2.a.ii} \newline
+(IF $\langle$(postfix 0 0 (for 6 (pop (for 7 (pop 1 add))))), []$\rangle$) \newline
+= $\langle$0 (for 6 (pop (for 7 (pop 1 add)))), []$\rangle$ \newline
+$\Rightarrow$ $\langle$(for 6 (pop (for 7 (pop 1 add)))), [0]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$6 pop (for 7 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [0]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop (for 7 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [6, 0]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 7 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [0]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$7 pop 1 add (for 6 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [0]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 6 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [7, 0]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 6 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [0]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 6 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1, 0]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 6 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$6 pop 1 add (for 5 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 5 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [6, 1]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 5 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 5 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1, 1]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 5 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [2]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$5 pop 1 add (for 4 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [2]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 4 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [5, 2]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 4 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [2]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 4 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1, 2]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 4 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [3]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$4 pop 1 add (for 3 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [3]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 3 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [4, 3]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 3 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [3]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 3 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1, 3]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 3 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [4]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$3 pop 1 add (for 2 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [4]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 2 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [3, 4]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 2 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [4]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 2 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1, 4]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 2 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [5]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$2 pop 1 add (for 1 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [5]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 1 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [2, 5]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 1 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [5]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 1 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1, 5]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 1 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [6]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$1 pop 1 add (for 0 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [6]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 0 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1, 6]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 0 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [6]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 0 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [1, 6]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 0 (pop 1 add)) (for 5 (pop (for 7 (pop 1 add)))), [7]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$(for 5 (pop (for 7 (pop 1 add)))), [7]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$5 pop (for 7 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [7]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop (for 7 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [5, 7]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 7 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [7]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$7 pop 1 add (for 6 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [7]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 6 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [7, 7]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 6 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [7]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 6 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [1, 7]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 6 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [8]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$6 pop 1 add (for 5 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [8]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 5 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [6, 8]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 5 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [8]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 5 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [1, 8]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 5 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [9]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$5 pop 1 add (for 4 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [9]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 4 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [5, 9]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 4 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [9]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 4 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [1, 9]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 4 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [10]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$4 pop 1 add (for 3 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [10]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 3 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [4, 10]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 3 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [10]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 3 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [1, 10]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 3 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [11]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$3 pop 1 add (for 2 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [11]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 2 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [3, 11]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 2 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [11]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 2 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [1, 11]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 2 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [12]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$2 pop 1 add (for 1 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [12]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 1 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [2, 12]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 1 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [12]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 1 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [1, 12]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 1 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [13]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$1 pop 1 add (for 0 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [13]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 0 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [1, 13]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 0 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [13]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 0 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [1, 13]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 0 (pop 1 add)) (for 4 (pop (for 7 (pop 1 add)))), [14]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$(for 4 (pop (for 7 (pop 1 add)))), [14]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$4 pop (for 7 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [14]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop (for 7 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [4, 14]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 7 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [14]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$7 pop 1 add (for 6 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [14]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 6 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [7, 14]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 6 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [14]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 6 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [1, 14]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 6 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [15]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$6 pop 1 add (for 5 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [15]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 5 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [6, 15]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 5 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [15]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 5 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [1, 15]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 5 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [16]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$5 pop 1 add (for 4 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [16]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 4 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [5, 16]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 4 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [16]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 4 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [1, 16]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 4 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [17]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$4 pop 1 add (for 3 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [17]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 3 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [4, 17]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 3 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [17]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 3 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [1, 17]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 3 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [18]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$3 pop 1 add (for 2 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [18]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 2 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [3, 18]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 2 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [18]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 2 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [1, 18]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 2 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [19]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$2 pop 1 add (for 1 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [19]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 1 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [2, 19]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 1 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [19]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 1 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [1, 19]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 1 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [20]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$1 pop 1 add (for 0 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [20]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 0 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [1, 20]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 0 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [20]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 0 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [1, 20]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 0 (pop 1 add)) (for 3 (pop (for 7 (pop 1 add)))), [21]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$(for 3 (pop (for 7 (pop 1 add)))), [21]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$3 pop (for 7 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [21]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop (for 7 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [3, 21]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 7 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [21]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$7 pop 1 add (for 6 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [21]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 6 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [7, 21]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 6 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [21]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 6 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [1, 21]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 6 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [22]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$6 pop 1 add (for 5 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [22]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 5 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [6, 22]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 5 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [22]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 5 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [1, 22]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 5 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [23]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$5 pop 1 add (for 4 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [23]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 4 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [5, 23]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 4 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [23]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 4 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [1, 23]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 4 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [24]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$4 pop 1 add (for 3 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [24]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 3 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [4, 24]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 3 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [24]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 3 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [1, 24]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 3 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [25]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$3 pop 1 add (for 2 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [25]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 2 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [3, 25]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 2 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [25]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 2 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [1, 25]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 2 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [26]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$2 pop 1 add (for 1 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [26]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 1 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [2, 26]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 1 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [26]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 1 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [1, 26]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 1 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [27]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$1 pop 1 add (for 0 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [27]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 0 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [27]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 0 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [27]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 0 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [1, 27]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 0 (pop 1 add)) (for 2 (pop (for 7 (pop 1 add)))), [28]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$(for 2 (pop (for 7 (pop 1 add)))), [28]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$2 pop (for 7 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [28]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop (for 7 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [2, 28]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 7 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [28]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$7 pop 1 add (for 6 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [28]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 6 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [7, 28]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 6 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [28]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 6 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [1, 28]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 6 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [29]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$6 pop 1 add (for 5 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [29]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 5 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [6, 29]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 5 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [29]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 5 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [1, 29]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 5 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [30]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$5 pop 1 add (for 4 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [30]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 4 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [5, 30]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 4 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [30]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 4 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [1, 30]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 4 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [31]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$4 pop 1 add (for 3 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [31]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 3 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [4, 31]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 3 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [31]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 3 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [1, 31]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 3 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [32]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$3 pop 1 add (for 2 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [32]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 2 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [3, 32]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 2 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [32]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 2 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [1, 32]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 2 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [33]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$2 pop 1 add (for 1 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [33]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 1 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [2, 33]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 1 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [33]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 1 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [1, 33]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 1 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [34]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$1 pop 1 add (for 0 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [34]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 0 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [1, 34]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 0 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [34]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 0 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [1, 34]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 0 (pop 1 add)) (for 1 (pop (for 7 (pop 1 add)))), [35]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$(for 1 (pop (for 7 (pop 1 add)))), [35]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$1 pop (for 7 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [35]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop (for 7 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [1, 35]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 7 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [35]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$7 pop 1 add (for 6 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [35]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 6 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [7, 35]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 6 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [35]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 6 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [1, 35]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 6 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [36]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$6 pop 1 add (for 5 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [36]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 5 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [6, 36]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 5 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [36]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 5 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [1, 36]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 5 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [37]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$5 pop 1 add (for 4 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [37]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 4 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [5, 37]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 4 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [37]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 4 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [1, 37]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 4 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [38]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$4 pop 1 add (for 0 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [38]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 3 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [4, 38]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 3 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [38]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 3 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [1, 38]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 3 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [39]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$3 pop 1 add (for 2 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [39]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 2 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [3, 39]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 2 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [39]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 2 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [1, 39]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 2 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [40]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$2 pop 1 add (for 1 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [40]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 1 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [2, 40]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 1 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [40]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 1 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [1, 40]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 1 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [41]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$1 pop 1 add (for 0 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [41]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$pop 1 add (for 0 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [1, 41]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$1 add (for 0 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [41]$\rangle$ \hfill [pop] \newline
+$\Rightarrow$ $\langle$add (for 0 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [1, 41]$\rangle$ \hfill [num] \newline
+$\Rightarrow$ $\langle$(for 0 (pop 1 add)) (for 0 (pop (for 7 (pop 1 add)))), [42]$\rangle$ \hfill [arithop] \newline
+$\Rightarrow$ $\langle$(for 0 (pop (for 7 (pop 1 add)))), [42]$\rangle$ \hfill [for] \newline
+$\Rightarrow$ $\langle$(), [42]$\rangle$ $\in$ FC \hfill [for] \newline
+$\Rightarrow$ (OF $\langle$(), [42]$\rangle$) = 42 \newline
+
+{\bf Question 2.b} \newline
+{\bf Proof:} To prove the termination property of PostFix does not change, we show that every transition reduces the energy of a configuration. First, we know that the energy of a configuration, sequence, or stack is greater than or equal to the sum of the energy of its components. By considering the rewrite rules of {\em for}, it is possible to see that the energy strictly decreases with each transition. The energy of the {\em for} command is defined as follows: \\
+
+{\em E$_{config}$} $\llbracket {\tt \langle (for\ N(Q_{for})) \:.\: Q_{rest}, S \rangle } \rrbracket$ \newline
+= {\em E$_{seq}$} $\llbracket {\tt \langle for \:.\: N \:.\: (Q_{for})} \rrbracket$ + {\em E$_{stack}$} $\llbracket {\tt Q_{rest} \:.\: S} \rrbracket$ \newline
+= 1 + {\em E$_{com}$} $\llbracket {\tt for} \rrbracket$ + {\em E$_{com}$} $\llbracket {\tt N} \rrbracket$ + {\em E$_{com}$} $\llbracket {\tt (Q_{for})} \rrbracket$ + {\em E$_{seq}$} $\llbracket {\tt Q_{rest}} \rrbracket$ + {\em E$_{stack}$} $\llbracket {\tt S} \rrbracket$ \newline
+= 2 + {\em E$_{com}$} $\llbracket {\tt N} \rrbracket$ + {\em E$_{seq}$} $\llbracket {\tt Q_{for}} \rrbracket$ + {\em E$_{seq}$} $\llbracket {\tt Q_{rest}} \rrbracket$ + {\em E$_{stack}$} $\llbracket {\tt S} \rrbracket$ \newline
+= 2 + {\em E$_{config}$} $\llbracket \langle {\tt N \:.\: Q_{for} \:@\: ((N-1) \:.\: Q_{for}), S} \rangle \rrbracket$ \\
+
+{\em E$_{config}$} $\llbracket {\tt \langle (for\ N(Q_{for})) \:.\: Q_{rest}, S \rangle } \rrbracket$ \newline
+= {\em E$_{seq}$} $\llbracket {\tt \langle for \:.\: N \:.\: (Q_{for})} \rrbracket$ + {\em E$_{stack}$} $\llbracket {\tt Q_{rest} \:.\: S} \rrbracket$ \newline
+= 1 + {\em E$_{com}$} $\llbracket {\tt for} \rrbracket$ + {\em E$_{com}$} $\llbracket {\tt N} \rrbracket$ + {\em E$_{com}$} $\llbracket {\tt (Q_{for})} \rrbracket$ + {\em E$_{seq}$} $\llbracket {\tt Q_{rest}} \rrbracket$ + {\em E$_{stack}$} $\llbracket {\tt S} \rrbracket$ \newline
+= 2 + {\em E$_{com}$} $\llbracket {\tt N} \rrbracket$ + {\em E$_{seq}$} $\llbracket {\tt Q_{for}} \rrbracket$ + {\em E$_{seq}$} $\llbracket {\tt Q_{rest}} \rrbracket$ + {\em E$_{stack}$} $\llbracket {\tt S} \rrbracket$ \newline
+= 2 + {\em E$_{seq}$} $\llbracket {\tt Q_{for}} \rrbracket$ + {\em E$_{seq}$} $\llbracket {\tt Q_{rest}} \rrbracket$ + {\em E$_{stack}$} $\llbracket {\tt S} \rrbracket$ \newline
+= 2 + {\em E$_{config}$} $\llbracket \langle {\tt Q_{rest}, S} \rangle \rrbracket$ \newline
+
+Thus, since we know that executing a command consumes at least one unit of energy, the termination property of PostFix does not change with the introduction of the {\em for} command. \\
+
+{\bf Question 3.a.i} \newline
+The following program returns the average of the values 3 and 7, which is 5. \newline
+(postfix 0 average (add 2 div) def 3 7 average ref exec) $\xrightarrow[ ]{\text{[ ]}}$ average (add 2 div) def 3 7 average ref exec \newline
+$\Rightarrow$ average (add 2 div) def 3 7 average ref exec $\rightarrow$ [ ], [ ] \newline
+$\Rightarrow$ (add 2 div) def 3 7 average ref exec $\rightarrow$ [average], [ ] \hfil [ident] \newline
+$\Rightarrow$ def 3 7 average ref exec $\rightarrow$ [(add 2 div)], [ ] \hfil [seq] \newline
+$\Rightarrow$ 3 7 average ref exec $\rightarrow$ [ ], [(average = (add 2 div))] \hfil [def] \newline
+$\Rightarrow$ 7 average ref exec $\rightarrow$ [3], [(average = (add 2 div))] \hfil [num] \newline
+$\Rightarrow$ average ref exec $\rightarrow$ [7, 3], [(average = (add 2 div))] \hfil [num] \newline
+$\Rightarrow$ ref exec $\rightarrow$ [average, 7, 3], [(average = (add 2 div))] \hfil [ident] \newline
+$\Rightarrow$ exec $\rightarrow$ [(add 2 div), 7, 3], [(average = (add 2 div))] \hfil [ref] \newline
+$\Rightarrow$ ( ) $\rightarrow$ [5], [(average = (add 2 div))] \hfil [exec] \newline
+= 5 \newline
+
+{\bf Question 3.a.ii} \newline
+The following program returns an error on the second {\em def} command since the second value on the stack, 5, is not an identifier. \newline
+(postfix 0 a 5 def a ref 7 def b ref) $\xrightarrow[ ]{\text{[ ]}}$ a 5 def a ref 7 def b ref \newline
+$\Rightarrow$ a 5 def a ref 7 def b ref $\rightarrow$ [ ], [ ] \newline
+$\Rightarrow$ 5 def a ref 7 def b ref $\rightarrow$ [a], [ ] \hfil [ident] \newline
+$\Rightarrow$ def a ref 7 def b ref $\rightarrow$ [5, a], [ ] \hfil [num] \newline
+$\Rightarrow$ a ref 7 def b ref $\rightarrow$ [ ], [(a = 5)] \hfil [def] \newline
+$\Rightarrow$ ref 7 def b ref $\rightarrow$ [a], [(a = 5)] \hfil [ident] \newline
+$\Rightarrow$ 7 def b ref $\rightarrow$ [5], [(a = 5)] \hfil [ref] \newline
+$\Rightarrow$ def b ref $\rightarrow$ [7, 5], [(a = 5)] \hfil [num] \newline
+= {\bf error} \newline
+
+{\bf Question 3.a.iii} \newline
+The following program returns an error on the {\em ref} command since the first value on the stack, d, is not bound in the dictionary. \newline
+(postfix 0 c 4 def d ref 1 add) $\xrightarrow[ ]{\text{[ ]}}$ c 4 def d ref 1 add \newline
+$\Rightarrow$ c 4 def d ref 1 add $\rightarrow$ [ ], [ ] \newline
+$\Rightarrow$ 4 def d ref 1 add $\rightarrow$ [c], [ ] \hfil [ident] \newline
+$\Rightarrow$ def d ref 1 add $\rightarrow$ [4, c], [ ] \hfil [num] \newline
+$\Rightarrow$ d ref 1 add $\rightarrow$ [ ], [(c = 4)] \hfil [def] \newline
+$\Rightarrow$ ref 1 add $\rightarrow$ [d], [(c = 4)] \hfil [ident] \newline
+= {\bf error} \newline
+\end{document}
